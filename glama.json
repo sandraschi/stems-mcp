@@ -1,0 +1,13 @@
+{
+  "name": "stems-mcp",
+  "description": "Audio stem separation using HTDemucs v4 via ONNX Runtime",
+  "version": "0.1.0",
+  "repository": "https://github.com/sandraschi/stems-mcp",
+  "tools": [
+    "stems_separate"
+  ],
+  "categories": ["audio", "media", "machine-learning"],
+  "homepage": "https://github.com/sandraschi/stems-mcp",
+  "author": "sandraschi",
+  "license": "MIT"
+}

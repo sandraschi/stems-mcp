@@ -1,0 +1,18 @@
+# stems-mcp
+
+Audio stem separation using HTDemucs v4 via ONNX Runtime.
+
+## Docs
+- README: [README.md](README.md)
+- Full docs: [llms-full.txt](llms-full.txt)
+
+## Quick start
+```powershell
+uv sync && uv run stems-mcp
+```
+HTTP mode: `uv run stems-mcp --mode http` on port 11126.
+
+## Key tools
+- `stems_separate(operation="separate", input_path, output_dir)` — 4 stems
+- `stems_separate(operation="separate_vocals", input_path, output_dir)` — 2 stems
+- `stems_separate(operation="status")` — model/CUDA status
