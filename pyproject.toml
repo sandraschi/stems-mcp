@@ -26,7 +26,11 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+ignore = ["E501"]
 
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.backends._legacy:_Backend"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.16.0,<0.17"]
