@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
 
-from stems_mcp.config import BACKEND_PORT, FRONTEND_PORT
+from stems_mcp.config import FRONTEND_PORT
 
 mcp = FastMCP(
     "stems-mcp",
@@ -16,6 +16,7 @@ mcp = FastMCP(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from stems_mcp.tools import register_all_tools
+
     register_all_tools()
     yield
 
@@ -46,6 +47,7 @@ _start_time = time.time()
 @app.get("/api/health")
 async def health():
     from stems_mcp.tools.stems import _get_session_info
+
     session_info = _get_session_info()
     return {
         "status": "ok",
@@ -62,6 +64,7 @@ async def health():
 @app.get("/api/v1/diagnostics")
 async def diagnostics():
     from stems_mcp.tools.stems import _get_session_info, _model_path
+
     model_path = _model_path()
     return {
         "status": "ok",

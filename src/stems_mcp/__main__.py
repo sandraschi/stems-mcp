@@ -13,7 +13,7 @@ def main():
     cleaned = [a for a in sys.argv[1:] if not a.startswith("--mode") and a not in ("--host", "--port")]
     sys.argv = [sys.argv[0]] + cleaned
 
-    from stems_mcp.server import mcp, app, BACKEND_PORT
+    from stems_mcp.server import BACKEND_PORT, app, mcp
 
     if args.mode == "http":
         import uvicorn

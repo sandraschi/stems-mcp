@@ -5,7 +5,6 @@ from typing import Annotated
 
 import numpy as np
 import soundfile as sf
-from fastmcp import FastMCP
 
 from stems_mcp.config import MODEL_CACHE, MODEL_FILENAME, MODEL_URL
 from stems_mcp.server import mcp
@@ -41,7 +40,10 @@ def _ensure_model() -> str:
                 downloaded += len(chunk)
                 if total:
                     pct = downloaded / total * 100
-                    print(f"\r  Downloading ... {downloaded / 1_000_000:.1f} / {total / 1_000_000:.1f} MB ({pct:.0f}%)", end="")
+                    print(
+                        f"\r  Downloading ... {downloaded / 1_000_000:.1f} / {total / 1_000_000:.1f} MB ({pct:.0f}%)",
+                        end="",
+                    )
                 else:
                     print(f"\r  Downloading ... {downloaded / 1_000_000:.1f} MB", end="")
         print()
@@ -127,6 +129,7 @@ def _separate_audio(
     # Resample to 44.1 kHz if needed
     if orig_sr != sample_rate:
         import scipy.signal
+
         ratio = sample_rate / orig_sr
         new_len = int(len(audio[0]) * ratio)
         audio_resampled = np.zeros((1, new_len), dtype=np.float32)
@@ -186,11 +189,14 @@ def _separate_audio(
 # Tools
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool()
 def stems_separate(
     operation: Annotated[str, "Operation to perform: separate (4 stems), separate_vocals (2 stems), or status"],
     input_path: Annotated[str | None, "Path to input audio file (required for separate/separate_vocals)"] = None,
-    output_dir: Annotated[str | None, "Directory to write stem WAV files (required for separate/separate_vocals)"] = None,
+    output_dir: Annotated[
+        str | None, "Directory to write stem WAV files (required for separate/separate_vocals)"
+    ] = None,
 ) -> dict:
     """Separate audio into stems using the HTDemucs v4 model.
 
