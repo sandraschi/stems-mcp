@@ -9,7 +9,7 @@ from stems_mcp.config import FRONTEND_PORT
 
 mcp = FastMCP(
     "stems-mcp",
-    description="Audio stem separation using HTDemucs v4 via ONNX Runtime",
+    instructions="Audio stem separation using HTDemucs v4 via ONNX Runtime",
 )
 
 
