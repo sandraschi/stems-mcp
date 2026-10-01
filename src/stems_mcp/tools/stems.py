@@ -1,3 +1,4 @@
+import hashlib
 import os
 import threading
 from pathlib import Path
@@ -6,8 +7,12 @@ from typing import Annotated
 import numpy as np
 import soundfile as sf
 
-from stems_mcp.config import MODEL_CACHE, MODEL_FILENAME, MODEL_URL
+from stems_mcp.config import MODEL_CACHE, MODEL_FILENAME, MODEL_SHA256, MODEL_SIZE, MODEL_URL
 from stems_mcp.server import mcp
+
+SAMPLE_RATE = 44100
+SEGMENT_SAMPLES = 343980  # 7.8 s, fixed by the exported graph
+SOURCES = ("drums", "bass", "other", "vocals")  # model output order
 
 # ---------------------------------------------------------------------------
 # Lazy model globals (thread-safe, single-load)
@@ -29,24 +34,28 @@ def _ensure_model() -> str:
     MODEL_CACHE.mkdir(parents=True, exist_ok=True)
     import httpx
 
+    part_path = model_path.with_suffix(model_path.suffix + ".part")
+    digest = hashlib.sha256()
     print(f"Downloading HTDemucs model from HuggingFace ({MODEL_URL}) ...")
-    with httpx.stream("GET", MODEL_URL, follow_redirects=True) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        downloaded = 0
-        with open(model_path, "wb") as f:
-            for chunk in r.iter_bytes(8192):
-                f.write(chunk)
-                downloaded += len(chunk)
-                if total:
-                    pct = downloaded / total * 100
-                    print(
-                        f"\r  Downloading ... {downloaded / 1_000_000:.1f} / {total / 1_000_000:.1f} MB ({pct:.0f}%)",
-                        end="",
-                    )
-                else:
-                    print(f"\r  Downloading ... {downloaded / 1_000_000:.1f} MB", end="")
-        print()
+    try:
+        with httpx.stream("GET", MODEL_URL, follow_redirects=True, timeout=60) as r:
+            r.raise_for_status()
+            downloaded = 0
+            with open(part_path, "wb") as f:
+                for chunk in r.iter_bytes(1 << 20):
+                    f.write(chunk)
+                    digest.update(chunk)
+                    downloaded += len(chunk)
+                    print(f"\r  Downloading ... {downloaded / 1_000_000:.1f} / {MODEL_SIZE / 1_000_000:.1f} MB", end="")
+            print()
+        if downloaded != MODEL_SIZE or digest.hexdigest() != MODEL_SHA256:
+            raise RuntimeError(
+                f"Model integrity check failed (got {downloaded} bytes, sha256 {digest.hexdigest()}); "
+                f"expected {MODEL_SIZE} bytes, sha256 {MODEL_SHA256}"
+            )
+        part_path.replace(model_path)
+    finally:
+        part_path.unlink(missing_ok=True)
 
     return str(model_path)
 
@@ -101,7 +110,7 @@ def _separate_audio(
     output_dir : str
         Directory to write stem WAV files.
     stems : int
-        4 = vocals, drums, bass, other. 2 = vocals, other (for separate_vocals).
+        4 = drums, bass, other, vocals. 2 = vocals + instrumental (drums + bass + other summed).
 
     Returns
     -------
@@ -111,76 +120,71 @@ def _separate_audio(
     out.mkdir(parents=True, exist_ok=True)
 
     session = _load_session()
-
     input_name = session.get_inputs()[0].name
-    sample_rate = 44100
+    output_name = session.get_outputs()[0].name
 
-    # Read audio
+    # Read audio as (channels, samples) float32, forced to stereo at 44.1 kHz
     try:
-        audio, orig_sr = sf.read(input_path, always_2d=True)
+        audio, orig_sr = sf.read(input_path, dtype="float32", always_2d=True)
     except Exception as e:
         return {"success": False, "error": f"Cannot read audio file: {e}"}
+    audio = audio.T
+    audio = np.repeat(audio, 2, axis=0) if audio.shape[0] == 1 else audio[:2]
 
-    # Mix to mono if multi-channel
-    if audio.shape[1] > 1:
-        audio = np.mean(audio, axis=1, keepdims=True)
-    audio = audio.T  # shape: (1, T)
+    if orig_sr != SAMPLE_RATE:
+        from math import gcd
 
-    # Resample to 44.1 kHz if needed
-    if orig_sr != sample_rate:
         import scipy.signal
 
-        ratio = sample_rate / orig_sr
-        new_len = int(len(audio[0]) * ratio)
-        audio_resampled = np.zeros((1, new_len), dtype=np.float32)
-        audio_resampled[0] = scipy.signal.resample(audio[0], new_len)
-        audio = audio_resampled
+        g = gcd(SAMPLE_RATE, int(orig_sr))
+        audio = scipy.signal.resample_poly(audio, SAMPLE_RATE // g, int(orig_sr) // g, axis=1).astype(np.float32)
 
-    # Normalize
-    peak = np.max(np.abs(audio))
-    if peak > 0:
-        audio = audio / peak
+    # Overlap-add over fixed 7.8 s segments (25% overlap, linear crossfade)
+    total = audio.shape[1]
+    overlap = SEGMENT_SAMPLES // 4
+    stride = SEGMENT_SAMPLES - overlap
+    n_chunks = max(1, (total + stride - 1) // stride)
+    window = np.ones(SEGMENT_SAMPLES, dtype=np.float32)
+    fade = np.linspace(0, 1, overlap, dtype=np.float32)
+    window[:overlap] = fade
+    window[-overlap:] = fade[::-1]
 
-    # Pad to multiple of model's chunk size (typically 264600 samples = 6s)
-    chunk_size = 264600
-    pad_len = chunk_size - (audio.shape[1] % chunk_size) if audio.shape[1] % chunk_size != 0 else 0
-    if pad_len > 0:
-        audio = np.pad(audio, ((0, 0), (0, pad_len)), mode="constant")
-
-    # Run inference
+    acc = np.zeros((len(SOURCES), 2, total), dtype=np.float32)
+    weight = np.zeros(total, dtype=np.float32)
     try:
-        outputs = session.run(None, {input_name: audio.astype(np.float32)})
+        for i in range(n_chunks):
+            start = i * stride
+            end = min(start + SEGMENT_SAMPLES, total)
+            chunk = audio[:, start:end]
+            if chunk.shape[1] < SEGMENT_SAMPLES:
+                chunk = np.pad(chunk, ((0, 0), (0, SEGMENT_SAMPLES - chunk.shape[1])))
+            result = session.run([output_name], {input_name: chunk[np.newaxis].astype(np.float32)})[0][0]
+            w = window[: end - start]
+            acc[:, :, start:end] += result[:, :, : end - start] * w
+            weight[start:end] += w
     except Exception as e:
         return {"success": False, "error": f"ONNX inference failed: {e}"}
+    acc /= np.maximum(weight, 1e-8)
 
-    # outputs shape: (n_sources, 1, T) for 4-stems or (2, 1, T) for 2-stems
-    n_sources = outputs[0].shape[0]
-    stem_names = {
-        4: ["vocals", "drums", "bass", "other"],
-        2: ["vocals", "other"],
-    }.get(n_sources, [f"stem_{i}" for i in range(n_sources)])
+    named = dict(zip(SOURCES, acc, strict=True))
+    if stems == 2:
+        named = {"vocals": named["vocals"], "instrumental": named["drums"] + named["bass"] + named["other"]}
 
-    # Trim padding
-    trim_end = audio.shape[1] - pad_len if pad_len > 0 else audio.shape[1]
-
-    # De-normalize and write each stem
     output_files = {}
-    for i, name in enumerate(stem_names):
-        stem_audio = outputs[0][i, 0, :trim_end]
-        if peak > 0:
-            stem_audio = stem_audio * peak
+    for name, data in named.items():
         out_path = out / f"{name}.wav"
-        sf.write(str(out_path), stem_audio, sample_rate)
+        sf.write(str(out_path), data.T, SAMPLE_RATE, subtype="PCM_24")
         output_files[name] = str(out_path)
 
     return {
         "success": True,
-        "message": f"Separated {n_sources} stems to {out}",
+        "message": f"Separated {len(named)} stems to {out}",
         "output_files": output_files,
         "metadata": {
-            "sample_rate": sample_rate,
+            "sample_rate": SAMPLE_RATE,
             "input_file": input_path,
-            "stems": stem_names,
+            "stems": list(named),
+            "chunks": n_chunks,
         },
     }
 
@@ -198,7 +202,7 @@ def stems_separate(
         str | None, "Directory to write stem WAV files (required for separate/separate_vocals)"
     ] = None,
 ) -> dict:
-    """Separate audio into stems using the HTDemucs v4 model.
+    """Separate audio into stems using the HTDemucs v4 model (stereo 44.1 kHz WAV output).
 
     [RATIONALE] Consolidated portmanteau for all stem operations to keep the tool list
     compact while exposing separate, separate_vocals, and status under one namespace.
@@ -243,11 +247,6 @@ def stems_separate(
     if operation == "separate":
         return _separate_audio(input_path, output_dir, stems=4)
     elif operation == "separate_vocals":
-        result = _separate_audio(input_path, output_dir, stems=4)
-        if result.get("success"):
-            keep = {"vocals", "other"}
-            result["output_files"] = {k: v for k, v in result["output_files"].items() if k in keep}
-            result["message"] = f"Extracted vocals + other to {output_dir}"
-        return result
+        return _separate_audio(input_path, output_dir, stems=2)
     else:
         return {"success": False, "error": f"Unknown operation: {operation}"}
