@@ -1,5 +1,6 @@
 import hashlib
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Annotated
@@ -89,10 +90,21 @@ def _load_session() -> tuple:
         available = onnxruntime.get_available_providers()
         sess_providers = [p for p in providers if p in available] or ["CPUExecutionProvider"]
 
-        _session = onnxruntime.InferenceSession(
+        session = onnxruntime.InferenceSession(
             model_path,
             providers=sess_providers,
         )
+        if sess_providers[0] != "CPUExecutionProvider":
+            # A provider can be listed yet fail at run time (e.g. cuDNN DLL missing); probe once, else use CPU.
+            try:
+                session.run(None, {session.get_inputs()[0].name: np.zeros((1, 2, SEGMENT_SAMPLES), np.float32)})
+            except Exception as e:
+                print(
+                    f"{sess_providers[0]} unusable ({str(e).splitlines()[0][:200]}); falling back to CPU",
+                    file=sys.stderr,
+                )
+                session = onnxruntime.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        _session = session
         return _session
 
 
