@@ -67,14 +67,15 @@ Returns model cache status and available ONNX providers (CUDA/CPU).
 
 - **Architecture**: Hybrid Transformer Demucs (HTDemucs) v4
 - **Format**: ONNX (ops=17, float32)
-- **Source**: https://huggingface.co/dhunstack/demucs-onnx
-- **Size**: ~200 MB
+- **Source**: https://huggingface.co/StemSplitio/htdemucs-onnx (MIT, SHA-256 verified on download)
+- **Size**: 316 MB (316,446,953 bytes)
+- **Contract**: input `mix` [1, 2, 343980] -> output `stems` [1, 4, 2, 343980], order drums/bass/other/vocals
 - **Cache**: ~/.cache/stems-mcp/htdemucs.onnx
 
 ## Supported Audio Formats
 
 All formats supported by soundfile: WAV, FLAC, OGG, AIFF, etc.
-Input is resampled to 44.1 kHz mono internally.
+Input is resampled to 44.1 kHz stereo internally (mono is duplicated); stems are written as 44.1 kHz stereo PCM_24 WAV.
 
 ## Ports
 
