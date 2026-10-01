@@ -8,7 +8,7 @@ Audio stem separation using HTDemucs v4 via ONNX Runtime.
 
 ## Quick start
 ```powershell
-uv sync && uv run stems-mcp
+uv sync --extra gpu && uv run stems-mcp   # or --extra cpu (pick exactly one)
 ```
 HTTP mode: `uv run stems-mcp --mode http` on port 11126.
 

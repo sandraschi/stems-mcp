@@ -11,11 +11,11 @@ Inference runs on CUDA if available, falling back to CPU.
 ## Setup
 
 ```powershell
-# Create venv and install deps
-uv sync
-
-# Install CUDA support (optional, requires CUDA toolkit)
+# Create venv and install deps with CUDA ONNX Runtime (requires CUDA toolkit)
 uv sync --extra gpu
+
+# Or CPU-only (extras conflict: pick exactly one)
+uv sync --extra cpu
 ```
 
 ## Running

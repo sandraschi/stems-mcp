@@ -13,7 +13,7 @@ Separates audio into **vocals, drums, bass, and other** (4 stems) or **vocals + 
 ## Quick start
 
 ```powershell
-uv sync
+uv sync --extra gpu   # or --extra cpu (pick exactly one)
 uv run stems-mcp
 ```
 

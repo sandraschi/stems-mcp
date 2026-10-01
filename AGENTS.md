@@ -4,7 +4,7 @@ Audio stem separation server using HTDemucs v4 via ONNX Runtime.
 
 ## Quick start
 ```powershell
-uv sync
+uv sync --extra gpu   # or --extra cpu (pick exactly one)
 uv run stems-mcp
 ```
 
