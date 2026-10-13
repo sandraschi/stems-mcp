@@ -1,0 +1,84 @@
+# stems-mcp — Full Documentation
+
+Audio stem separation server using HTDemucs v4 via ONNX Runtime.
+
+## Architecture
+
+stems-mcp is a FastMCP 3.4+ server with dual transport (stdio + HTTP).
+On first use it downloads the htdemucs.onnx model (~200 MB) from HuggingFace.
+Inference runs on CUDA if available, falling back to CPU.
+
+## Setup
+
+```powershell
+# Create venv and install deps with CUDA ONNX Runtime (requires CUDA toolkit)
+uv sync --extra gpu
+
+# Or CPU-only (extras conflict: pick exactly one)
+uv sync --extra cpu
+```
+
+## Running
+
+### stdio mode (default, for Claude Desktop / Cursor)
+```powershell
+uv run stems-mcp
+```
+
+### HTTP mode (for webapp / REST clients)
+```powershell
+uv run stems-mcp --mode http
+# Server listens on http://127.0.0.1:11126
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| MCP_PORT | 11126 | HTTP transport port |
+| MCP_HOST | 127.0.0.1 | Bind address |
+| STEMS_MODEL_DIR | ~/.cache/stems-mcp | Model cache directory |
+
+## Tools
+
+### stems_separate
+
+Portmanteau tool with 3 operations:
+
+#### operation="separate"
+Separates audio into 4 stems: vocals, drums, bass, other.
+- input_path (str): Path to audio file
+- output_dir (str): Directory for output WAV files
+
+#### operation="separate_vocals"
+Two-stem separation: vocals + other.
+- input_path (str): Path to audio file
+- output_dir (str): Directory for output WAV files
+
+#### operation="status"
+Returns model cache status and available ONNX providers (CUDA/CPU).
+
+## REST API
+
+- GET /api/health — Server health, uptime, provider info
+- GET /api/v1/diagnostics — Full diagnostics with tool list and model status
+
+## Model Details
+
+- **Architecture**: Hybrid Transformer Demucs (HTDemucs) v4
+- **Format**: ONNX (ops=17, float32)
+- **Source**: https://huggingface.co/dhunstack/demucs-onnx
+- **Size**: ~200 MB
+- **Cache**: ~/.cache/stems-mcp/htdemucs.onnx
+
+## Supported Audio Formats
+
+All formats supported by soundfile: WAV, FLAC, OGG, AIFF, etc.
+Input is resampled to 44.1 kHz mono internally.
+
+## Ports
+
+| Port | Service |
+|------|---------|
+| 11126 | MCP HTTP / REST API backend |
+| 11127 | Webapp frontend (reserved) |

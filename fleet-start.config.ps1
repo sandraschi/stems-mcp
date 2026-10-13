@@ -1,4 +1,4 @@
-﻿# Per-repo fleet start config for stems-mcp
+# Per-repo fleet start config for stems-mcp
 # Edit ports/backend target here - start.ps1 is fleet-standard.
 @{
     Name         = 'stems-mcp'
@@ -10,6 +10,7 @@
         Kind          = 'uvicorn'
         UvicornTarget = 'stems_mcp.server:app'
         SyncExtras    = @('dev')
+        SyncOnStart  = $true
         Env           = @{ WEB_PORT = '11126' }
     }
     Frontend = @{
